@@ -72,6 +72,14 @@ function ConfirmButton({ label, confirmLabel, onConfirm, disabled }) {
   );
 }
 
+// Orders this far from a sample city can't sensibly share a plan with it.
+const SEPARATE_AREA_KM = 200;
+
+function roughDistanceKm(a, b) {
+  const midLat = ((a.lat + b.lat) / 2) * (Math.PI / 180);
+  return Math.hypot(a.lat - b.lat, (a.lng - b.lng) * Math.cos(midLat)) * 111.32;
+}
+
 export default function ScenarioPanel({
   meta, warehouses, vehicles, orders, warehouseId, setWarehouseId, clickMode, setClickMode,
   actions, settings, setSettings, busy, onRun, onStop,
@@ -79,6 +87,8 @@ export default function ScenarioPanel({
   const [city, setCity] = useState('Bengaluru');
   // Eight orders is the largest size where all five algorithms run on three vehicles.
   const [sampleSize, setSampleSize] = useState(8);
+  const [confirmingReplace, setConfirmingReplace] = useState(false);
+  const elsewhere = orders.some((o) => roughDistanceKm(o, meta.city_centres[city]) > SEPARATE_AREA_KM);
   const warehouse = warehouses.find((w) => w.id === warehouseId);
   const active = vehicles.filter((v) => v.active);
   const totalDemand = orders.reduce((sum, o) => sum + o.demand, 0);
@@ -112,7 +122,13 @@ export default function ScenarioPanel({
         <div className="field-row">
           <label className="field grow">
             City
-            <select value={city} onChange={(event) => setCity(event.target.value)}>
+            <select
+              value={city}
+              onChange={(event) => {
+                setCity(event.target.value);
+                setConfirmingReplace(false);
+              }}
+            >
               {meta.cities.map((c) => <option key={c}>{c}</option>)}
             </select>
           </label>
@@ -127,9 +143,36 @@ export default function ScenarioPanel({
             />
           </label>
         </div>
-        <button type="button" className="secondary" onClick={() => actions.loadSample(city, Number(sampleSize))}>
-          Add sample orders
-        </button>
+        {confirmingReplace && elsewhere ? (
+          <div className="replace-prompt" role="group" aria-label="Replace existing orders">
+            <p className="hint">
+              Your current orders include some far from {city}, too far to plan together.
+              Replace {orders.length === 1 ? 'your order' : `all ${orders.length} orders`} with the {city} sample?
+              Past runs stay in History.
+            </p>
+            <div className="run-buttons">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setConfirmingReplace(false);
+                  actions.loadSample(city, Number(sampleSize), true);
+                }}
+              >
+                Replace orders
+              </button>
+              <button type="button" className="secondary" onClick={() => setConfirmingReplace(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => (elsewhere ? setConfirmingReplace(true) : actions.loadSample(city, Number(sampleSize)))}
+          >
+            Add sample orders
+          </button>
+        )}
       </section>
 
       <section>

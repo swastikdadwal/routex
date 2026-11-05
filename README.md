@@ -27,9 +27,23 @@ If PowerShell blocks the scripts, run them with `powershell -ExecutionPolicy Byp
 
 `start.ps1` opens the app at http://localhost:8000. You need an internet connection for map tiles and road data.
 
+### With Docker
+
+If you have [Docker Desktop](https://www.docker.com/products/docker-desktop/), you don't need to install Python, Node.js or PostgreSQL:
+
+```powershell
+docker compose up --build
+```
+
+Then open http://localhost:8000. The database lives in a Docker volume, separate from any PostgreSQL on your computer, and is kept between runs.
+
+- Press Ctrl+C to stop, or run `docker compose down`. Adding `-v` to `down` also deletes the saved data.
+- If port 8000 is busy, set another one first: `$env:ROUTEX_PORT=8080`.
+- The default database password is fine on your own computer, because the database isn't reachable from outside Docker. To change it, set `POSTGRES_PASSWORD` in a `.env` file next to `docker-compose.yml` before the first run.
+
 ## Using RouteX
 
-1. Select **Add sample orders**, or use **Place warehouse** and click the map to build your own scenario.
+1. Select **Add sample orders**, or use **Place warehouse** and click the map to build your own scenario. Samples in the same city add to your orders. If your orders are in another area, RouteX asks before replacing them, and past runs stay in History.
 2. Add, edit or remove vehicles and orders in the side panel. Everything is saved to the database. Drag map markers to move them, and right-click an order to remove it.
 3. Choose the algorithms and distance source, then select **Run comparison**.
 4. Switch between plans above the map, or use **Compare all** to see them side by side.
@@ -62,7 +76,7 @@ The two road sources give different totals because they answer different questio
 - A comparison takes up to 40 orders and 8 active vehicles.
 - Road distances are averaged over both travel directions, because the solvers need a symmetric matrix. Fastest-route distances can slightly break the triangle inequality that the 2× bound relies on.
 - Timings come from Python, measured in a separate process. Compare them with each other, not with other languages.
-- OSRM, Overpass and OpenStreetMap tiles are free public services meant for light use, and stop locations are sent to them. If road data is unavailable, a run falls back to straight-line distances and says so.
+- OSRM, Overpass and OpenStreetMap tiles are free public services meant for light use, and stop locations are sent to them. If the main Overpass server is busy, RouteX tries its sister servers from the same operator (set `OVERPASS_BACKUP_URLS` to change them). If road data is still unavailable after about four minutes at most, a run falls back to straight-line distances and says so.
 
 ## API
 
@@ -85,7 +99,21 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-The tests check DP, Branch and Bound and Brute Force against an independent exhaustive solver, and Dijkstra and A* against Bellman-Ford. API tests run full comparisons on a separate `routex_test` database.
+The tests check DP, Branch and Bound and Brute Force against an independent exhaustive solver, and Dijkstra and A* against Bellman-Ford. API tests run full comparisons on a separate `routex_test` database. Road download tests use scripted server answers, so they need no internet.
+
+The browser test uses every feature of the app on a temporary copy, with its own empty database on port 8099. It needs Docker, Chrome and an internet connection, and takes about four minutes:
+
+```powershell
+$env:ROUTEX_PORT=8099
+docker compose -p routex-e2e up --build -d --wait
+cd frontend
+npm install
+npm run test:e2e
+cd ..
+docker compose -p routex-e2e down -v --rmi local
+```
+
+It refuses to run on a database that already has data, because it deletes what it finds. Screenshots go to `frontend/e2e/shots/`. Use `$env:BASE` to test another address, and `$env:BROWSER='msedge'` to use Edge. A Dijkstra failure in this test can mean the public road servers are down, not that RouteX is broken.
 
 ## Project layout
 
@@ -101,6 +129,7 @@ backend/app/main.py            FastAPI routes
 backend/app/models.py          PostgreSQL tables
 backend/scripts/init_db.py     creates the database and writes backend/.env
 backend/tests/                 algorithm, road data and API tests
+frontend/e2e/                  browser test of the whole app
 frontend/src/                  React app
 ```
 

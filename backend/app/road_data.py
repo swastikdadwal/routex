@@ -24,6 +24,11 @@ DRIVABLE = (
     "motorway_link|trunk_link|primary_link|secondary_link|tertiary_link"
 )
 BBOX_PADDING_DEGREES = 0.01
+# The public road servers are often busy, and one answer takes 20-45 s when healthy.
+OVERPASS_ROUNDS = 2
+OVERPASS_ROUND_WAIT_S = 5
+OVERPASS_ATTEMPT_TIMEOUT_S = 100
+OVERPASS_TOTAL_BUDGET_S = 240
 
 
 class RoadDataError(Exception):
@@ -128,6 +133,46 @@ def parse_overpass(elements: list[dict]) -> RoadGraph:
     return graph
 
 
+def _download_roads(query: str) -> list[dict]:
+    """Tries each road server in turn, for a limited number of rounds and total time."""
+    servers = [settings.overpass_url, *settings.overpass_backup_urls]
+    deadline = time.monotonic() + OVERPASS_TOTAL_BUDGET_S
+    problem = "no server was tried"
+    for round_number in range(OVERPASS_ROUNDS):
+        if round_number:
+            time.sleep(OVERPASS_ROUND_WAIT_S)
+        for url in servers:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RoadDataError(f"OpenStreetMap road servers did not answer in time ({problem})")
+            try:
+                response = httpx.post(
+                    url,
+                    data={"data": query},
+                    headers={"User-Agent": USER_AGENT},
+                    timeout=httpx.Timeout(min(remaining, OVERPASS_ATTEMPT_TIMEOUT_S), connect=10),
+                )
+                status = response.status_code
+                if status == 429 or status >= 500:
+                    problem = f"last answer: HTTP {status}"
+                    continue
+                if status >= 400:  # The request itself is wrong, so another server won't help.
+                    raise RoadDataError(f"OpenStreetMap road download was refused (HTTP {status})")
+                body = response.json()
+            except httpx.TimeoutException:
+                problem = "last attempt timed out"
+                continue
+            except (httpx.HTTPError, ValueError) as error:
+                problem = f"last problem: {type(error).__name__}"
+                continue
+            elements = body.get("elements", [])
+            if not elements and body.get("remark"):  # Busy servers give up with a remark.
+                problem = "last server was too busy"
+                continue
+            return elements
+    raise RoadDataError(f"OpenStreetMap road servers are busy ({problem})")
+
+
 def load_graph(points: list[dict]) -> LoadedGraph:
     wanted = _bbox(points)
     with _graph_lock:
@@ -139,18 +184,7 @@ def load_graph(points: list[dict]) -> LoadedGraph:
             f'[out:json][timeout:120];way["highway"~"^({DRIVABLE})$"]'
             f"({south:.5f},{west:.5f},{north:.5f},{east:.5f});out body geom;"
         )
-        try:
-            response = httpx.post(
-                settings.overpass_url,
-                data={"data": query},
-                headers={"User-Agent": USER_AGENT},
-                timeout=150,
-            )
-            response.raise_for_status()
-            elements = response.json().get("elements", [])
-        except (httpx.HTTPError, ValueError) as error:
-            raise RoadDataError(f"OpenStreetMap road download failed: {error}") from error
-        graph = parse_overpass(elements)
+        graph = parse_overpass(_download_roads(query))
         core = strongly_connected_core(graph) if len(graph) else set()
         if not core:
             raise RoadDataError("OpenStreetMap returned no connected roads for this area")

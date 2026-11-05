@@ -125,6 +125,7 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .link:hover:not(:disabled) { text-decoration: underline; }
 .link.danger { color: var(--critical); font-weight: 600; }
 .confirm { display: inline-flex; gap: 10px; }
+.replace-prompt { display: grid; gap: 8px; }
 
 .run-bar { position: sticky; bottom: 0; display: grid; gap: 8px; padding: 12px 0 16px; background: var(--surface); }
 .run-buttons { display: flex; gap: 8px; }

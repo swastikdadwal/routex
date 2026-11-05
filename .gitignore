@@ -8,3 +8,5 @@ Thumbs.db
 node_modules/
 dist/
 .venv/
+
+frontend/e2e/shots/

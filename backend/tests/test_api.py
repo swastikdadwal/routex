@@ -163,6 +163,34 @@ def test_roadmap_endpoints(client):
     assert {r["id"] for r in client.get("/api/results").json()} == {one.json()["id"], compared.json()["id"]}
 
 
+def test_sample_can_replace_orders_from_another_city(client):
+    centres = client.get("/api/meta").json()["city_centres"]
+    assert set(centres) == set(client.get("/api/meta").json()["cities"])
+    scenario(client, orders=4)
+    before = client.get("/api/runs").json()
+
+    added = client.post("/api/sample", json={"city": "Bengaluru", "orders": 2}).json()
+    assert added["orders"] == 2 and len(client.get("/api/orders").json()) == 6
+
+    replaced = client.post("/api/sample", json={"city": "London", "orders": 3, "replace_orders": True})
+    assert replaced.status_code == 201
+    orders = client.get("/api/orders").json()
+    assert len(orders) == 3
+    assert all(abs(order["lat"] - centres["London"]["lat"]) < 1 for order in orders)
+    assert client.get("/api/runs").json() == before
+    assert any(w["id"] == replaced.json()["warehouse_id"] for w in client.get("/api/warehouses").json())
+
+
+def test_replacing_orders_frees_room_and_a_refused_sample_changes_nothing(client):
+    scenario(client, orders=40)
+    assert client.post("/api/sample", json={"city": "Delhi", "orders": 1}).status_code == 409
+    assert client.post("/api/sample", json={"city": "Atlantis", "orders": 1, "replace_orders": True}).status_code == 422
+    assert client.post("/api/sample", json={"city": "Delhi", "orders": 0, "replace_orders": True}).status_code == 422
+    assert len(client.get("/api/orders").json()) == 40
+    assert client.post("/api/sample", json={"city": "Delhi", "orders": 40, "replace_orders": True}).status_code == 201
+    assert len(client.get("/api/orders").json()) == 40
+
+
 def test_run_rejects_invalid_requests(client):
     warehouse = scenario(client)
     vehicles = client.get("/api/vehicles").json()

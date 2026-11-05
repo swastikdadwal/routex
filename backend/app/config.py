@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     database_url: str
     osrm_url: str = "https://router.project-osrm.org"
     overpass_url: str = "https://overpass-api.de/api/interpreter"
+    # Same operator as the main server, so stop locations go nowhere new.
+    overpass_backup_urls: list[str] = [
+        "https://lz4.overpass-api.de/api/interpreter",
+        "https://z.overpass-api.de/api/interpreter",
+    ]
 
 
 settings = Settings()

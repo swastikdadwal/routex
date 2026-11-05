@@ -61,6 +61,7 @@ def meta():
     return {
         "algorithms": ALGORITHMS,
         "cities": list(CITIES),
+        "city_centres": {name: {"lat": lat, "lng": lng} for name, (lat, lng, _) in CITIES.items()},
         "limits": {
             "orders": MAX_ORDERS,
             "vehicles": MAX_VEHICLES,
@@ -185,6 +186,8 @@ def load_sample(body: schemas.SampleIn, session: Session = Db):
     """Adds a warehouse in the city, random orders, and a fleet if none exists."""
     if body.city not in CITIES:
         raise HTTPException(422, f"Unknown city {body.city}")
+    if body.replace_orders:
+        session.execute(delete(Order))
     room = MAX_ORDERS - _order_count(session)
     if body.orders > room:
         raise HTTPException(409, f"Only {room} more orders fit. Clear some orders first.")

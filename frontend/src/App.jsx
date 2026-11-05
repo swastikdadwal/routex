@@ -93,8 +93,12 @@ export default function App() {
       }
     };
     return {
-      loadSample: guard(async (city, count) => {
-        const { warehouse_id: newId } = await api.post('/sample', { city, orders: count });
+      loadSample: guard(async (city, count, replaceOrders = false) => {
+        const most = meta.limits.orders;
+        if (!Number.isInteger(count) || count < 1 || count > most) {
+          throw new Error(`Enter a whole number of orders from 1 to ${most}.`);
+        }
+        const { warehouse_id: newId } = await api.post('/sample', { city, orders: count, replace_orders: replaceOrders });
         const [w, v, o] = await Promise.all([api.get('/warehouses'), api.get('/vehicles'), api.get('/orders')]);
         setWarehouses(w);
         setVehicles(v);
@@ -159,7 +163,7 @@ export default function App() {
         scenarioChanged();
       }),
     };
-  }, [report, scenarioChanged]);
+  }, [meta, report, scenarioChanged]);
 
   const onMapClick = useCallback((latlng) => {
     if (clickMode === 'warehouse') {

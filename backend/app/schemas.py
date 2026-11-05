@@ -81,6 +81,7 @@ class SampleIn(BaseModel):
     city: str
     orders: int = Field(default=10, ge=1, le=40)
     seed: int | None = None
+    replace_orders: bool = False
 
 
 class RunIn(BaseModel):

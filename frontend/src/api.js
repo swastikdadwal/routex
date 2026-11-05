@@ -19,7 +19,9 @@ async function request(method, path, body) {
   }
   if (!response.ok) {
     const detail = data?.detail;
-    throw new Error(typeof detail === 'string' ? detail : `The server answered ${response.status}.`);
+    // FastAPI reports invalid input as a list of problems, each with a message.
+    const problems = Array.isArray(detail) ? detail.map((item) => item.msg).filter(Boolean).join(' ') : '';
+    throw new Error(typeof detail === 'string' ? detail : problems || `The server answered ${response.status}.`);
   }
   return data;
 }

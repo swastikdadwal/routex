@@ -1,0 +1,31 @@
+# Starts RouteX and its database: docker compose up --build
+# Then open http://localhost:8000. Data is kept in the routex-data volume.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: routex
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-routex}
+      POSTGRES_DB: routex
+    volumes:
+      - routex-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U routex -d routex"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # No published port: only the app can reach the database.
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://routex:${POSTGRES_PASSWORD:-routex}@db:5432/routex
+    ports:
+      - "127.0.0.1:${ROUTEX_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  routex-data:
